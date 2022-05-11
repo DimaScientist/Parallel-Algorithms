@@ -9,20 +9,22 @@
 
 using namespace std;
 
+const string FILE_PATH = "solutions/u.txt";
 
-const double MU = 0.01;
+
+const double MU = 0.02;
 
 const double START_U_VALUE = 0;
 const double START_U_RIGHT_VALUE = 90;
 const double START_U_LEFT_VALUE = 40;
 
-const double X_MAX = 1;
+const double X_MAX = 1.0;
 const double X_MIN = 0;
-const int X_NUM = 100;
+const int X_NUM = 20;
 
-const double T_MAX = 100;
+const double T_MAX = 20;
 const double T_MIN = 0;
-const int T_NUM = 200;
+const int T_NUM = 100;
 
 
 double get_step(double max_value, double min_value, int num) {
@@ -90,34 +92,20 @@ bool to_triangular(double* array, int size) {
 }
 
 
-double* solve_system(double* a, double* b, int size, int job) {
+double* solve_system(double* a, double* b, int size) {
 	// Решение системы A * x = b.
 	double* result = new double[size];
 
 	for (int i = 0; i < size; i++) {
 		result[i] = b[i];
 	}
-
-	if (job == 0) {
-		for (int i = 1; i < size; i++) {
-			result[i] -= a[2 + 3 * (i - 1)] * result[i - 1];
-		}
-		for (int i = size; i >= 1; i--) {
-			result[i - 1] /= a[1 + 3 * (i - 1)];
-			if (i > 1) {
-				result[i - 2] -= a[3 * (i - 1)] * result[i - 1];
-			}
-		}
+	for (int i = 1; i < size; i++) {
+		result[i] -= a[2 + 3 * (i - 1)] * result[i - 1];
 	}
-	else {
-		for (int i = 1; i <= size; i++) {
-			result[i] /= a[1 + 3 * (i - 1)];
-			if (i < size) {
-				result[i] -= a[3 * i] * result[i - 1];
-			}
-		}
-		for (int i = size - 1; i >= size; i--) {
-			result[i - 1] -= a[2 + 3 * (i - 1)] * result[i];
+	for (int i = size; i >= 1; i--) {
+		result[i - 1] /= a[1 + 3 * (i - 1)];
+		if (i > 1) {
+			result[i - 2] -= a[3 * (i - 1)] * result[i - 1];
 		}
 	}
 	return result;
@@ -165,13 +153,19 @@ void save_to_file(string file_name, double* matrix, int n, int m) {
 
 	for (int i = 0; i < n; i++) {
 		for (int j = 0; j < m; j++) {
-			output << setw(10) << matrix[j + i * m] << " ";
+			output << matrix[j + i * m] << ",";
 		}
 		output << "\n";
 	}
 
 	output.close();
 	cout << "Data has written in file " << file_name << endl;
+}
+
+
+double exact_func(double x, double t) {
+	// Точное решение.
+	return exp(-t) * sin(sqrt(MU) * x);
 }
 
 
@@ -195,27 +189,50 @@ int main(int argc, char* argv[], char* envp[]) {
 	double* b = new double[X_NUM];
 	double* f_vec = new double[X_NUM];
 
-	for (int i = 1; i < T_NUM; i++) {
-		b[0] = get_left_dirichlet_condition(X_MIN, X_MAX, T_MIN, t[i]);
-		function(x, f_vec, t[i], X_NUM);
-
-		for (int j = 1; j < X_NUM - 1; j++) {
-			b[j] = u[j + X_NUM * (i - 1)] + t_step * f_vec[j];
-		}
-
-		b[X_NUM - 1] = get_right_dirichlet_condition(X_MIN, X_MAX, T_MIN, t[i]);
-
-		double* solution = solve_system(matrix, b, X_NUM, 0);
-
-		for (int j = 0; j < X_NUM; j++) {
-			u[j + X_NUM * i] = solution[j];
-		}
-
-		delete solution;
+	for (int i = 0; i < X_NUM; i++) {
+		b[i] = 0;
+		f_vec[i] = 0;
 	}
 
-	string file_name = "./solutions/u.txt";
-	save_to_file(file_name, u, X_NUM, T_NUM);
+	for (int i = 0; i < T_NUM; i++) {
+		if (i == 0) {
+			for (int j = 0; j < X_NUM; j++) {
+
+				if (j == 0 || j == X_NUM - 1) {
+					u[0] = exact_func(x[j], t[i]);
+				}
+				else {
+					u[j] = exact_func(X_NUM, t[i]);
+				}
+
+			}
+		}
+		else {
+			for (int j = 0; j < X_NUM; j++) {
+
+				double u_current = u[j + X_NUM * (i - 1)];
+
+				if (j == 0 || j == X_NUM - 1) {
+					b[j] = exact_func(u_current, t[i]);
+				}
+				else {
+					b[j] = u_current + t_step * f_vec[j];
+				}
+			}
+
+			double* solution = solve_system(matrix, b, X_NUM);
+
+			for (int j = 0; j < X_NUM; j++) {
+				u[j + X_NUM * i] = solution[j];
+			}
+
+			delete solution;
+
+		}
+		
+	}
+
+	save_to_file(FILE_PATH, u, T_NUM, X_NUM);
 
 	delete x;
 	delete t;
