@@ -47,14 +47,29 @@ double* get_linespace(double max_value, double min_value, int num) {
 }
 
 
-double get_courant_friederichs_loewy_criterion(double tau, double h, double mu) {
-	// Вычисление критерия Куранта — Фридрихса — Леви.
+double get_lambda_value(double tau, double h, double mu) {
+	// Вычисление лямбды.
 	return mu * tau / (h * h);
 }
 
 
-double* get_system_matrix(int x_num, double cfl_coefficient) {
-	// Задает системную матрицу.
+void format_matrix(double* array, int size) {
+	// Форматирование матрицы для решения СЛАУ.
+	for (int i = 1; i <= size - 1; i++) {
+		if (array[1 + 3 * (i - 1)] == 0) return;
+
+		array[2 + 3 * (i - 1)] = array[2 + 3 * (i - 1)] / array[1 + 3 * (i - 1)];
+
+		array[1 + 3 * i] = array[1 + 3 * i] - array[2 + 3 * (i - 1)] * array[3 * i];
+
+
+		if (array[1 + 3 * (size - 1)] == 0) return;
+	}
+}
+
+
+double* get_system_matrix(int x_num, double lambda_value) {
+	// Задает трехдиагональную иатрицу матрицу.
 	double *matrix = new double[3 * x_num];
 	
 	matrix[0 + 0 * 3] = 0;
@@ -62,33 +77,18 @@ double* get_system_matrix(int x_num, double cfl_coefficient) {
 	matrix[0 + 1 * 3] = 0;
 
 	for (int i = 1; i < x_num - 1; i++) {
-		matrix[2 + 3 * (i - 1)] = - cfl_coefficient;
-		matrix[1 + 3 * i] = 1 + 2 * cfl_coefficient;
-		matrix[0 + 3 * (i + 1)] = -cfl_coefficient;
+		matrix[2 + 3 * (i - 1)] = -lambda_value;
+		matrix[1 + 3 * i] = 1 + 2 * lambda_value;
+		matrix[0 + 3 * (i + 1)] = -lambda_value;
 	}
 
 	matrix[2 + 3 * (x_num- 2)] = 0;
 	matrix[1 + 3 * (x_num - 1)] = 1;
 	matrix[2 + 3 * (x_num - 1)] = 0;
+
+	format_matrix(matrix, x_num);
 	
 	return matrix;
-}
-
-
-bool to_triangular(double* array, int size) {
-	// Приведение матрицы к триангулярному формату.
-	for (int i = 1; i <= size - 1; i++) {
-		if (array[1 + 3 * (i - 1)] == 0) return false;
-
-		array[2 + 3 * (i - 1)] = array[2 + 3 * (i - 1)] / array[1 + 3 * (i - 1)];
-
-		array[1 + 3 * i] = array[1 + 3 * i] - array[2 + 3 * (i - 1)] * array[3 * i];
-
-
-		if (array[1 + 3 * (size - 1)] == 0) return false;
-	}
-
-	return true;
 }
 
 
@@ -116,28 +116,6 @@ void set_starting_values(double* u, int size){
 	// Заполняем U начальными значениями.
 	for (int i = 0; i < size; i++) {
 		u[i] = START_U_VALUE;
-	}
-}
-
-
-double get_right_dirichlet_condition(double a, double b, double t0, double t) {
-	// Установка граничных условий Дирихле справа.
-	double value = START_U_RIGHT_VALUE;
-	return value;
-}
-
-
-double get_left_dirichlet_condition(double a, double b, double t0, double t) {
-	// Установка граничных условий Дирихле слева.
-	double value = START_U_LEFT_VALUE;
-	return value;
-}
-
-
-void function(double* x, double* values, double t, int size) {
-	// Функция переноса.
-	for (int i = 0; i < size; i++) {
-		values[i] = 0;
 	}
 }
 
@@ -181,10 +159,9 @@ int main(int argc, char* argv[], char* envp[]) {
 	double* u = new double[X_NUM * T_NUM];
 	set_starting_values(u, X_NUM * T_NUM);
 
-	double clf_coefficient = get_courant_friederichs_loewy_criterion(t_step, x_step, MU);
+	double clf_coefficient = get_lambda_value(t_step, x_step, MU);
 
 	double* matrix = get_system_matrix(X_NUM, clf_coefficient);
-	to_triangular(matrix, X_NUM);
 
 	double* b = new double[X_NUM];
 	double* f_vec = new double[X_NUM];
