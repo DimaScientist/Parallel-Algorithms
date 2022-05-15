@@ -1,5 +1,5 @@
 #include <iostream>
-#include <string.h>
+#include <string>
 #include <cstdlib>
 #include <iomanip>
 #include <fstream>
@@ -20,21 +20,30 @@ const double START_U_LEFT_VALUE = 40;
 
 const double X_MAX = 1.0;
 const double X_MIN = 0;
-const int X_NUM = 20;
+const int X_NUM = 10;
 
 const double T_MAX = 20;
 const double T_MIN = 0;
-const int T_NUM = 100;
+const int T_NUM = 10;
+
+const double EPS = 0.00001;
 
 
 double get_step(double max_value, double min_value, int num) {
-	// Вычисление шага дискретизации.
+	// Compute sampling step.
 	return (max_value - min_value) / (num - 1);
+}
+
+void fill_zeros(double* array, int size) {
+	// Array is filled zeros.
+	for (int i = 0; i < size; i++) {
+		array[i] = 0;
+	}
 }
 
 
 double* get_linespace(double max_value, double min_value, int num) {
-	// Равномерное заполнение в промежутке min_value - max_value
+	// Get line space in min_value - max_value
 	double* array = new double[num];
 
 	for (int i = 0; i < num; i++) {
@@ -48,72 +57,66 @@ double* get_linespace(double max_value, double min_value, int num) {
 
 
 double get_lambda_value(double tau, double h, double mu) {
-	// Вычисление лямбды.
+	// Compute lambda value.
 	return mu * tau / (h * h);
 }
 
 
-void format_matrix(double* array, int size) {
-	// Форматирование матрицы для решения СЛАУ.
-	for (int i = 1; i <= size - 1; i++) {
-		if (array[1 + 3 * (i - 1)] == 0) return;
-
-		array[2 + 3 * (i - 1)] = array[2 + 3 * (i - 1)] / array[1 + 3 * (i - 1)];
-
-		array[1 + 3 * i] = array[1 + 3 * i] - array[2 + 3 * (i - 1)] * array[3 * i];
-
-
-		if (array[1 + 3 * (size - 1)] == 0) return;
-	}
-}
-
-
 double* get_system_matrix(int x_num, double lambda_value) {
-	// Задает трехдиагональную иатрицу матрицу.
-	double *matrix = new double[3 * x_num];
-	
-	matrix[0 + 0 * 3] = 0;
-	matrix[1 + 0 * 3] = 1;
-	matrix[0 + 1 * 3] = 0;
+	// Get tridiagonal matrix.
+	double *matrix = new double[x_num * x_num];
+	fill_zeros(matrix, x_num * x_num);
 
-	for (int i = 1; i < x_num - 1; i++) {
-		matrix[2 + 3 * (i - 1)] = -lambda_value;
-		matrix[1 + 3 * i] = 1 + 2 * lambda_value;
-		matrix[0 + 3 * (i + 1)] = -lambda_value;
+	for (int i = 0; i < x_num; i++) {
+		matrix[i + x_num * i] = 1 + 2 * lambda_value;
+		if (i > 0) {
+			matrix[i - 1 + i * x_num] = -lambda_value;
+		}
+		if (i < x_num - 1) {
+			matrix[i + 1 + i * x_num] = -lambda_value;
+		}
 	}
-
-	matrix[2 + 3 * (x_num- 2)] = 0;
-	matrix[1 + 3 * (x_num - 1)] = 1;
-	matrix[2 + 3 * (x_num - 1)] = 0;
-
-	format_matrix(matrix, x_num);
 	
 	return matrix;
 }
 
 
-double* solve_system(double* a, double* b, int size) {
-	// Решение системы A * x = b.
-	double* result = new double[size];
+void gauss_seidel_solver(double* A, double* b, double* X, int size) {
+	// Gauss-Seidel method to solve system of equations.
+	double* X_prev = new double[size];
+	fill_zeros(X_prev, size);
+	double step_error = 0;
 
-	for (int i = 0; i < size; i++) {
-		result[i] = b[i];
-	}
-	for (int i = 1; i < size; i++) {
-		result[i] -= a[2 + 3 * (i - 1)] * result[i - 1];
-	}
-	for (int i = size; i >= 1; i--) {
-		result[i - 1] /= a[1 + 3 * (i - 1)];
-		if (i > 1) {
-			result[i - 2] -= a[3 * (i - 1)] * result[i - 1];
+	do {
+		for (int i = 0; i < size; i++) {
+			X_prev[i] = X[i];
+			X[i] = b[i];
+
+			for (int j = 0; j < size; j++) {
+				if (i != j) {
+					X[i] -= A[j + i * size] * X[j];
+				}
+			}
+			X[i] = X[i] / A[i + i * size];
 		}
-	}
-	return result;
+
+		step_error = fabs(X[0] - X_prev[0]);
+
+		for (int i = 0; i < size; i++) {
+			double err = X[i] - X_prev[i];
+			if (err < step_error) {
+				step_error = err;
+			}
+		}
+
+	} while (step_error > EPS);
+
+
 }
 
 
 void set_starting_values(double* u, int size){
-	// Заполняем U начальными значениями.
+	// U is filled starting values without borders.
 	for (int i = 0; i < size; i++) {
 		u[i] = START_U_VALUE;
 	}
@@ -121,34 +124,59 @@ void set_starting_values(double* u, int size){
 
 
 void save_to_file(string file_name, double* matrix, int n, int m) {
+	// Save matrix in file.
 	ofstream output;
-	
 	output.open(file_name.c_str());
-
 	if (!output) {
 		cout << "Error: Could not open the file" << endl;
 	}
 
 	for (int i = 0; i < n; i++) {
 		for (int j = 0; j < m; j++) {
-			output << matrix[j + i * m] << ",";
+			output << matrix[j + i * m] << " ";
 		}
 		output << "\n";
 	}
-
 	output.close();
 	cout << "Data has written in file " << file_name << endl;
 }
 
 
 double exact_func(double x, double t) {
-	// Точное решение.
+	// Exact function.
 	return exp(-t) * sin(sqrt(MU) * x);
+}
+
+void print_matrix(double* matrix, double* x, double* t, int n, int m) {
+	// Print matrix of heat equation.
+	cout << setw(10) << "t";
+	for (int i = 0; i < m; i++) {
+		cout << setw(16) << "x[" << i + 1 << "]" << " ";
+	}
+	cout << endl;
+
+	cout << setw(10) << " ";
+	for (int i = 0; i < m; i++) {
+		cout << setw(20) << x[i] << " ";
+	}
+	cout << endl;
+
+
+	for (int i = 0; i < n; i++) {
+		cout << setw(10) << t[i];
+		for (int j = 0; j < m; j++) {
+			cout << setw(20) << matrix[j + i * m] << " ";
+		}
+		cout << endl;
+	}
 }
 
 
 int main(int argc, char* argv[], char* envp[]) {
 	setlocale(LC_ALL, "Russian");
+	cout << "Одномерная неявная схема теплопроводности" << endl;
+	cout << "Студент: Баканов Д.С., группа 6132-010402D" << endl;
+	cout << "------------------------------------------" << endl;
 
 	double x_step = get_step(X_MAX, X_MIN, X_NUM);
 	double* x = get_linespace(X_MAX, X_MIN, X_NUM);
@@ -157,6 +185,7 @@ int main(int argc, char* argv[], char* envp[]) {
 	double* t = get_linespace(T_MAX, T_MIN, T_NUM);
 
 	double* u = new double[X_NUM * T_NUM];
+	fill_zeros(u, X_NUM * T_NUM);
 	set_starting_values(u, X_NUM * T_NUM);
 
 	double clf_coefficient = get_lambda_value(t_step, x_step, MU);
@@ -165,11 +194,10 @@ int main(int argc, char* argv[], char* envp[]) {
 
 	double* b = new double[X_NUM];
 	double* f_vec = new double[X_NUM];
+	double* step_result = new double[X_NUM];
 
-	for (int i = 0; i < X_NUM; i++) {
-		b[i] = 0;
-		f_vec[i] = 0;
-	}
+	fill_zeros(b, X_NUM);
+	fill_zeros(f_vec, X_NUM);
 
 	for (int i = 0; i < T_NUM; i++) {
 		if (i == 0) {
@@ -187,26 +215,30 @@ int main(int argc, char* argv[], char* envp[]) {
 		else {
 			for (int j = 0; j < X_NUM; j++) {
 
-				double u_current = u[j + X_NUM * (i - 1)];
+				double u_prev = u[j + X_NUM * (i - 1)];
 
 				if (j == 0 || j == X_NUM - 1) {
-					b[j] = exact_func(u_current, t[i]);
+					b[j] = exact_func(u_prev, t[i]);
 				}
 				else {
-					b[j] = u_current + t_step * f_vec[j];
+					b[j] = u_prev + t_step * f_vec[j];
 				}
 			}
 
-			double* solution = solve_system(matrix, b, X_NUM);
+			fill_zeros(step_result, X_NUM);
+			gauss_seidel_solver(matrix, b, step_result, X_NUM);
 
 			for (int j = 0; j < X_NUM; j++) {
-				u[j + X_NUM * i] = solution[j];
+				u[j + X_NUM * i] = step_result[j];
 			}
 
-			delete solution;
 
 		}
 		
+	}
+
+	if (T_NUM * X_NUM <= 100) {
+		print_matrix(u, x, t, T_NUM, X_NUM);
 	}
 
 	save_to_file(FILE_PATH, u, T_NUM, X_NUM);
