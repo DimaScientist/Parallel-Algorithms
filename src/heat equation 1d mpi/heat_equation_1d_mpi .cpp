@@ -115,11 +115,6 @@ void gauss_seidel_solver(double* A, double* b, double* X, int size) {
 	int index_start = count_sum * rank;
 	int index_end = count_sum * (rank + 1);
 
-	if (rank == numtasks - 1) {
-		index_end = size;
-	}
-
-
 	do {
 		for (int i = 0; i < size; i++) {
 			X_prev[i] = X[i];
@@ -129,7 +124,7 @@ void gauss_seidel_solver(double* A, double* b, double* X, int size) {
 
 			process_sum = 0;
 
-			for (int j = index_start; j < i; j++) {
+			for (int j = 0; j < i; j++) {
 				if (j >= index_start && j < index_end)
 					process_sum += diag[j + i * size] * X[j];
 			}
@@ -198,7 +193,8 @@ void print_matrix(double* matrix, double* x, double* t, int n, int m) {
 		// cout << setw(10) << t[i];
 		for (int j = 0; j < m; j++) {
 			// cout << setw(20) << matrix[j + i * m] << " ";
-			cout << round(matrix[j + i * m] * 10000) / 10000 << " ";
+			// cout << round(matrix[j + i * m] * 100000) / 100000 << " ";
+			cout << matrix[j + i * m] << " ";
 		}
 		cout << endl;
 	}
@@ -210,8 +206,6 @@ void save_to_file(const char* file_name, double* matrix, int n, int m) {
 
 	MPI_File output;
 	MPI_File_open(MPI_COMM_SELF, file_name, MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL, &output);
-
-	cout << output << endl;
 
 	if (!output) {
 		cout << "Error: Could not open the file" << endl;
@@ -334,7 +328,9 @@ int main(int argc, char** argv) {
 		cout << "Student: Bakanov D.S., group 6132-010402D" << endl;
 		cout << "------------------------------------------" << endl;
 		cout << "Time elapsed: " << (time_end - time_start) * 1000 << "ms" << endl;
-		print_matrix(u, x, t, T_NUM, X_NUM);
+		if (X_NUM * T_NUM <= 100) {
+			print_matrix(u, x, t, T_NUM, X_NUM);
+		}
 		save_to_file(FILE_PATH, u, T_NUM, X_NUM);
 	}
 	MPI_Barrier(MPI_COMM_WORLD);

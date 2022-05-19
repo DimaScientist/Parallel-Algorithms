@@ -85,29 +85,48 @@ void gauss_seidel_solver(double* A, double* b, double* X, int size) {
 	// Gauss-Seidel method to solve system of equations.
 	double* X_prev = new double[size];
 	fill_zeros(X_prev, size);
+
+	double* diag = new double[size * size];
+	fill_zeros(diag, size * size);
+
+	for (int i = 0; i < size; i++) {
+		for (int j = 0; j < size; j++) {
+			if (i == j) {
+				diag[j + i * size] = 0;
+			}
+			else {
+				diag[j + i * size] = -A[j + i * size] / A[i + i * size];
+			}
+		}
+	}
+
 	double step_error = 0;
+
 
 	do {
 		for (int i = 0; i < size; i++) {
 			X_prev[i] = X[i];
-			X[i] = b[i];
-
-			for (int j = 0; j < size; j++) {
-				if (i != j) {
-					X[i] -= A[j + i * size] * X[j];
-				}
-			}
-			X[i] = X[i] / A[i + i * size];
 		}
 
-		step_error = fabs(X[0] - X_prev[0]);
 
 		for (int i = 0; i < size; i++) {
-			double err = X[i] - X_prev[i];
-			if (err < step_error) {
-				step_error = err;
+			double sum = 0;
+
+			for (int j = 0; j < i; j++) {
+				sum += diag[j + i * size] * X[j];
 			}
+			for (int j = i; j < size; j++) {
+				sum += diag[j + i * size] * X_prev[j];
+			}
+			X[i] = sum + b[i] / A[i + i * size];
 		}
+
+		step_error = 0;
+
+		for (int i = 0; i < size; i++) {
+			step_error += (X[i] - X_prev[i]) * (X[i] - X_prev[i]);
+		}
+		step_error = sqrt(step_error);
 
 	} while (step_error > EPS);
 

@@ -35,27 +35,35 @@ def get_system_matrix(num: int, lambda_value: float) -> np.array:
 
 def gauss_seidel_solver(A: np.array, b: np.array, size: int, eps: float = 0.00001) -> np.array:
     """Метод Гаусса-Зейделя для решения системы A * x = b"""
-    diag = np.zeros(size)
     x = np.zeros(size)
+    x_prev = np.zeros(size)
+    diag = np.zeros(size * size)
     step_error = eps * 2
 
+    for i in range(size):
+        for j in range(size):
+            if i == j:
+                diag[j + i * size] = 0
+            else:
+                diag[j + i * size] = -A[j + i * size] / A[i + i * size]
+
     while step_error > eps:
-        step_error = 0
+        x_prev = np.copy(x)
 
         for i in range(size):
-            diag[i] = x[i]
-            x[i] = b[i]
+            sum = 0
 
-            for j in range(size):
-                if i != j:
-                    x[i] -= A[j + i * size] * x[j]
+            for j in range(0, i):
+                sum += diag[j + i * size] * x[j]
+            for j in range(i, size):
+                sum += diag[j + i * size] * x_prev[j]
 
-            x[i] = x[i] / A[i + i * size]
-            diag[i] = np.abs(diag[i] - x[i])
+            x[i] = sum + b[i] / A[i + i * size]
 
-        step_error = diag[0]
-        for i in range(1, size):
-            if diag[i] > step_error:
-                step_error = diag[i]
+        step_error = 0
+        for i in range(size):
+            step_error += (x_prev[i] - x[i]) * (x_prev[i] - x[i])
+
+        step_error = np.sqrt(step_error)
 
     return x
