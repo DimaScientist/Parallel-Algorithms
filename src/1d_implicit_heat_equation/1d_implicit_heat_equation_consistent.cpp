@@ -4,8 +4,10 @@
 #include <iomanip>
 #include <fstream>
 #include <ctime>
-#include <cmath>
 
+#define _USE_MATH_DEFINES
+
+#include <math.h>
 
 using namespace std;
 
@@ -27,6 +29,7 @@ const double T_MIN = 0;
 const int T_NUM = 10;
 
 const double EPS = 0.00001;
+const int JACOBI_MAX_ITERATIONS = pow(10, 10);
 
 
 double get_step(double max_value, double min_value, int num) {
@@ -81,26 +84,15 @@ double* get_system_matrix(int x_num, double lambda_value) {
 }
 
 
-void gauss_seidel_solver(double* A, double* b, double* X, int size) {
-	// Gauss-Seidel method to solve system of equations.
+void jacobi_solver(double* A, double* b, double* X, int size) {
+	// Jacobi method to solve system of equations.
+	int max_iterations = pow(10, 10);
+
 	double* X_prev = new double[size];
 	fill_zeros(X_prev, size);
 
-	double* diag = new double[size * size];
-	fill_zeros(diag, size * size);
-
-	for (int i = 0; i < size; i++) {
-		for (int j = 0; j < size; j++) {
-			if (i == j) {
-				diag[j + i * size] = 0;
-			}
-			else {
-				diag[j + i * size] = -A[j + i * size] / A[i + i * size];
-			}
-		}
-	}
-
 	double step_error = 0;
+	int iteration = 0;
 
 
 	do {
@@ -112,11 +104,10 @@ void gauss_seidel_solver(double* A, double* b, double* X, int size) {
 		for (int i = 0; i < size; i++) {
 			double sum = 0;
 
-			for (int j = 0; j < i; j++) {
-				sum += diag[j + i * size] * X[j];
-			}
-			for (int j = i; j < size; j++) {
-				sum += diag[j + i * size] * X_prev[j];
+			for (int j = 0; j < size; j++) {
+				if (i != j) {
+					sum += - A[j + i * size] / A[i + i * size] * X_prev[j];
+				}
 			}
 			X[i] = sum + b[i] / A[i + i * size];
 		}
@@ -127,8 +118,9 @@ void gauss_seidel_solver(double* A, double* b, double* X, int size) {
 			step_error += (X[i] - X_prev[i]) * (X[i] - X_prev[i]);
 		}
 		step_error = sqrt(step_error);
+		iteration += 1;
 
-	} while (step_error > EPS);
+	} while (step_error > EPS && iteration < JACOBI_MAX_ITERATIONS);
 
 
 }
@@ -152,6 +144,7 @@ void save_to_file(string file_name, double* matrix, int n, int m) {
 
 	for (int i = 0; i < n; i++) {
 		for (int j = 0; j < m; j++) {
+			double value = matrix[j + i * m];
 			output << matrix[j + i * m] << " ";
 		}
 		output << "\n";
@@ -161,9 +154,9 @@ void save_to_file(string file_name, double* matrix, int n, int m) {
 }
 
 
-double exact_func(double x, double t) {
+float exact_func(double x, double t) {
 	// Exact function.
-	return exp(-t) * sin(sqrt(MU) * x);
+	return exp(- t) * sin(sqrt(MU) * x);
 }
 
 void print_matrix(double* matrix, double* x, double* t, int n, int m) {
@@ -222,19 +215,13 @@ int main(int argc, char* argv[], char* envp[]) {
 		if (i == 0) {
 			for (int j = 0; j < X_NUM; j++) {
 
-				if (j == 0 || j == X_NUM - 1) {
-					u[0] = exact_func(x[j], t[i]);
-				}
-				else {
-					u[j] = exact_func(X_NUM, t[i]);
-				}
-
+				u[j] = exact_func(x[j], t[i]);
 			}
 		}
 		else {
 			for (int j = 0; j < X_NUM; j++) {
 
-				double u_prev = u[j + X_NUM * (i - 1)];
+				float u_prev = u[j + X_NUM * (i - 1)];
 
 				if (j == 0 || j == X_NUM - 1) {
 					b[j] = exact_func(u_prev, t[i]);
@@ -245,7 +232,7 @@ int main(int argc, char* argv[], char* envp[]) {
 			}
 
 			fill_zeros(step_result, X_NUM);
-			gauss_seidel_solver(matrix, b, step_result, X_NUM);
+			jacobi_solver(matrix, b, step_result, X_NUM);
 
 			for (int j = 0; j < X_NUM; j++) {
 				u[j + X_NUM * i] = step_result[j];

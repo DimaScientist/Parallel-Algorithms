@@ -33,30 +33,21 @@ def get_system_matrix(num: int, lambda_value: float) -> np.array:
     return matrix
 
 
-def gauss_seidel_solver(A: np.array, b: np.array, size: int, eps: float = 0.00001) -> np.array:
-    """Метод Гаусса-Зейделя для решения системы A * x = b"""
+def jacobi_solver(A: np.array, b: np.array, size: int, eps: float = 0.00001, max_iterations: int = 1e10) -> np.array:
+    """Метод Якоби для решения системы A * x = b."""
     x = np.zeros(size)
-    x_prev = np.zeros(size)
-    diag = np.zeros(size * size)
     step_error = eps * 2
+    iteration = 0
 
-    for i in range(size):
-        for j in range(size):
-            if i == j:
-                diag[j + i * size] = 0
-            else:
-                diag[j + i * size] = -A[j + i * size] / A[i + i * size]
-
-    while step_error > eps:
+    while step_error > eps and iteration < max_iterations:
         x_prev = np.copy(x)
 
         for i in range(size):
             sum = 0
-
             for j in range(0, i):
-                sum += diag[j + i * size] * x[j]
-            for j in range(i, size):
-                sum += diag[j + i * size] * x_prev[j]
+                sum += - A[j + i * size] / A[i + i * size] * x_prev[j]
+            for j in range(i + 1, size):
+                sum += - A[j + i * size] / A[i + i * size] * x_prev[j]
 
             x[i] = sum + b[i] / A[i + i * size]
 
@@ -65,5 +56,6 @@ def gauss_seidel_solver(A: np.array, b: np.array, size: int, eps: float = 0.0000
             step_error += (x_prev[i] - x[i]) * (x_prev[i] - x[i])
 
         step_error = np.sqrt(step_error)
+        iteration += 1
 
     return x

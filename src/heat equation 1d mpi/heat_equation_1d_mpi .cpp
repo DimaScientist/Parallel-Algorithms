@@ -23,14 +23,15 @@ const double START_U_LEFT_VALUE = 40;
 
 const double X_MAX = 1.0;
 const double X_MIN = 0;
-const int X_NUM = 10;
+const int X_NUM = 75;
 
 const double T_MAX = 20;
 const double T_MIN = 0;
-const int T_NUM = 10;
+const int T_NUM = 75;
 
 
 const double EPS = 0.00001;
+const int JACOBI_MAX_ITERATIONS = pow(10, 10);
 
 
 double get_step(double max_value, double min_value, int num) {
@@ -85,77 +86,64 @@ double* get_system_matrix(int x_num, double lambda_value) {
 }
 
 
-void gauss_seidel_solver(double* A, double* b, double* X, int size) {
-	// Gauss-Seidel method to solve system of equations.
+void jacobi_solver(double* A, double* b, double* X, int size) {
+	// Jacobi method to solve system of equations.
 	int numtasks, rank;
 	MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
+	int count_rows_per_process = size / numtasks;
+
 	double* X_prev = new double[size];
 	fill_zeros(X_prev, size);
+	double* X_block = new double[count_rows_per_process];
+	fill_zeros(X_block, count_rows_per_process);
 
-	double *diag = new double[size * size];
-	fill_zeros(diag, size * size);
+	double* A_recv = new double[count_rows_per_process * size];
+	fill_zeros(A_recv, count_rows_per_process * size);
+	double* b_recv = new double[count_rows_per_process];
+	fill_zeros(b_recv, count_rows_per_process);
+
+	MPI_Scatter(A, count_rows_per_process * size, MPI_DOUBLE, A_recv, count_rows_per_process * size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	MPI_Scatter(b, count_rows_per_process, MPI_DOUBLE, b_recv, count_rows_per_process, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+	int iteration = 0;
 	double step_error = 0;
 
-	double process_sum, total_sum;
-
-	for (int i = 0; i < size; i++) {
-		for (int j = 0; j < size; j++) {
-			if (i == j) {
-				diag[j + i * size] = 0;
-			}
-			else {
-				diag[j + i * size] = -A[j + i * size] / A[i + i * size];
-			}
-		}
-	}
-
-	int count_sum = size / numtasks;
-	int index_start = count_sum * rank;
-	int index_end = count_sum * (rank + 1);
-
 	do {
+		step_error = 0;
+
 		for (int i = 0; i < size; i++) {
 			X_prev[i] = X[i];
 		}
 
+		for (int i = 0; i < count_rows_per_process; i++) {
+			int global_row_index = (rank * count_rows_per_process) + i;
+			int global_col_index = i * size;
+
+			X_block[i] = b_recv[i] / A_recv[global_row_index + i * size];
+
+			for (int j = 0; j < global_row_index; j++) {
+				X_block[i] -= A_recv[global_col_index + j] / A_recv[global_row_index + i * size] * X_prev[j];
+			}
+
+			for (int j = global_row_index + 1; j < size; j++) {
+				X_block[i] -= A_recv[global_col_index + j] / A_recv[global_row_index + i * size] * X_prev[j];
+			}
+		}
+
+		MPI_Allgather(X_block, count_rows_per_process, MPI_DOUBLE, X, count_rows_per_process, MPI_DOUBLE, MPI_COMM_WORLD);
+
 		for (int i = 0; i < size; i++) {
-
-			process_sum = 0;
-
-			for (int j = 0; j < i; j++) {
-				if (j >= index_start && j < index_end)
-					process_sum += diag[j + i * size] * X[j];
-			}
-
-			for (int j = i; j < size; j++) {
-				if (j >= index_start && j < index_end)
-					process_sum += diag[j + i * size] * X_prev[j];
-			}
-
-			total_sum = 0;
-			MPI_Reduce(&process_sum, &total_sum, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-
-			X[i] = total_sum + b[i] / A[i + i * size];
-
+			step_error += (X_prev[i] - X[i]) * (X_prev[i] - X[i]);
 		}
+		step_error = sqrt(step_error);
 
-		if (rank == 0) {
-			step_error = 0;
-
-			for (int i = 0; i < size; i++) {
-				step_error += (X[i] - X_prev[i]) * (X[i] - X_prev[i]);
-			}
-
-			step_error = sqrt(step_error);
-		}
-
-		MPI_Bcast(&step_error, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+		iteration++;
+		
 	} while (step_error > EPS);
 
-	delete X_prev;
-	delete diag;
+	free(X_prev);
 }
 
 
@@ -173,27 +161,9 @@ double exact_func(double x, double t) {
 }
 
 void print_matrix(double* matrix, double* x, double* t, int n, int m) {
-	/*
-	cout << setw(10) << "t";
-	for (int i = 0; i < m; i++) {
-		cout << setw(16) << "x[" << i + 1 << "]" << " ";
-	}
-	cout << endl;
-	*/
-	/*
-	cout << setw(10) << " ";
-	for (int i = 0; i < m; i++) {
-		cout << setw(20) << x[i] << " ";
-	}
-	cout << endl;
-	*/
-
-
+	cout << "Result matrix of temperature: " << endl;
 	for (int i = 0; i < n; i++) {
-		// cout << setw(10) << t[i];
 		for (int j = 0; j < m; j++) {
-			// cout << setw(20) << matrix[j + i * m] << " ";
-			// cout << round(matrix[j + i * m] * 100000) / 100000 << " ";
 			cout << matrix[j + i * m] << " ";
 		}
 		cout << endl;
@@ -279,13 +249,7 @@ int main(int argc, char** argv) {
 		if (i == 0) {
 			if (rank == 0) {
 				for (int j = 0; j < X_NUM; j++) {
-
-					if (j == 0 || j == X_NUM - 1) {
-						u[0] = exact_func(x[j], t[i]);
-					}
-					else {
-						u[j] = exact_func(X_NUM, t[i]);
-					}
+					u[j] = exact_func(x[j], t[i]);
 				}
 			}
 		}
@@ -310,7 +274,7 @@ int main(int argc, char** argv) {
 			fill_zeros(step_result, X_NUM);
 			MPI_Barrier(MPI_COMM_WORLD);
 
-			gauss_seidel_solver(matrix, b, step_result, X_NUM);
+			jacobi_solver(matrix, b, step_result, X_NUM);
 
 			if (rank == 0) {
 				for (int j = 0; j < X_NUM; j++) {
@@ -327,6 +291,7 @@ int main(int argc, char** argv) {
 		cout << "1D implicit method of heat equation MPI" << endl;
 		cout << "Student: Bakanov D.S., group 6132-010402D" << endl;
 		cout << "------------------------------------------" << endl;
+		cout << "Matrix size: " << X_NUM * X_NUM << ", process number: " << numtasks << endl;
 		cout << "Time elapsed: " << (time_end - time_start) * 1000 << "ms" << endl;
 		if (X_NUM * T_NUM <= 100) {
 			print_matrix(u, x, t, T_NUM, X_NUM);
